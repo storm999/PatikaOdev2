@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
@@ -27,91 +28,58 @@ namespace PatikaOdev1.Controllers
     public static class staticData
     {
         public static List<WeatherForecast> forecastList = new List<WeatherForecast>() { {new WeatherForecast(new DateTime(2) ,2,"cold") },
-                                                                                            {new WeatherForecast(new DateTime(1) ,1,"warm") }};
+                                                                                         {new WeatherForecast(new DateTime(1) ,1,"warm") }};
     }
 
-    //[Authorize(Roles = "Member")]
-    [ApiController]
-    [Route("[controller]")]
-    public class WeatherForecastController : ControllerBase
+    public interface IDataOperations
     {
-        /*private static readonly string[] Summaries = new[]
+        public List<WeatherForecast> GetOrdered();
+        public List<WeatherForecast> GetAll();
+        public List<WeatherForecast> Post([FromQuery] WeatherForecast wf);
+        public List<WeatherForecast> Put(int id, WeatherForecast wf);
+        public List<WeatherForecast> Patch(int id, WeatherForecast wf);
+        public List<WeatherForecast> Delete(int id);
+    }
+
+    public class DataOperations : IDataOperations
+    {
+        public List<WeatherForecast> GetOrdered()
         {
-            "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-        };*/
-
-        private readonly ILogger<WeatherForecastController> _logger;
-
-        public WeatherForecastController(ILogger<WeatherForecastController> logger)
-        {
-            _logger = logger;
-
+            return staticData.forecastList.OrderBy(t => t.TemperatureC).ToList();
         }
 
-        [HttpGet("GetWeatherForecastOrdered")]
-        public IActionResult GetOrdered()
+        public List<WeatherForecast> GetAll()
         {
-            try
-            {
-                if (staticData.forecastList.Count == 0)
-                {
-                    return NoContent();
-                }
-            }
-            catch
-            {
-                return BadRequest("An error occured");
-            }
-            return Ok(staticData.forecastList.OrderBy(t => t.TemperatureC));
+            return staticData.forecastList;
         }
 
-        [HttpGet(Name = "GetWeatherForecast")]
-        public IActionResult Get()
-        {
-            try
-            {
-                if (staticData.forecastList.Count == 0)
-                {
-                    return NoContent();
-                }
-            }
-            catch
-            {
-                return BadRequest("An error occured");
-            }
-            return Ok(staticData.forecastList);
-        }
-
-        [HttpPost(Name = "PostWeatherForecast")]
-        public IActionResult Post([FromQuery] WeatherForecast wf)
+        public List<WeatherForecast> Post([FromQuery] WeatherForecast wf)
         {
             try
             {
                 staticData.forecastList.Add(wf);
-                return Ok(staticData.forecastList);
+                return staticData.forecastList;
             }
             catch
             {
-                return BadRequest("An error occured");
-            }    
+                return null; //Normall DTO object contains a field related with error handling.
+            }
         }
 
-        [HttpPut(Name = "PutWeatherForecast")]
-        public IActionResult Put(int id, WeatherForecast wf)
+        public List<WeatherForecast> Put(int id, WeatherForecast wf)
         {
             try
             {
-                staticData.forecastList[id] = wf;
-                return Ok(staticData.forecastList);
+                staticData.forecastList.Add(wf);
+                return staticData.forecastList;
             }
             catch
             {
-                return BadRequest("An error occured");
+                return null; //Normall DTO object contains a field related with error handling.
             }
         }
 
-        [HttpPatch(Name = "PatchWeatherForecast")]
-        public IActionResult Patch(int id, WeatherForecast wf)
+        public List<WeatherForecast> Patch(int id, WeatherForecast wf)
         {
             try
             {
@@ -124,25 +92,169 @@ namespace PatikaOdev1.Controllers
                         staticData.forecastList[id].GetType().GetProperty(propertyInfo.Name).SetValue(staticData.forecastList[id], wf.GetType().GetProperty(propertyInfo.Name).GetValue(wf));
                     }
                 }
-                return Ok(staticData.forecastList);
+                return staticData.forecastList;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        public List<WeatherForecast> Delete(int id)
+        {
+            try
+            {
+                staticData.forecastList.RemoveAt(id);
+                return staticData.forecastList;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    public static class DependencyExtension
+    {
+        public static void AddDependencies(this IServiceCollection services)
+        {
+            services.AddTransient<IDataOperations, DataOperations>();
+        }
+    }
+
+    public class Logger 
+    {
+        RequestDelegate requestDelegate;
+
+        public Logger(RequestDelegate requestDelegate)
+        {
+            this.requestDelegate = requestDelegate;
+        }
+
+        public async Task Invoke(HttpContext context)
+        {
+            try
+            {
+                await requestDelegate(context);
+            }
+            finally
+            {
+                Console.WriteLine(context.Request?.Method + context.Request?.Path.Value + context.Response?.StatusCode);
+            }
+        }
+    }
+
+    //[Authorize(Roles = "Member")]
+    [ApiController]
+    [Route("[controller]")]
+    public class WeatherForecastController : ControllerBase
+    {
+        /*private static readonly string[] Summaries = new[]
+        {
+            "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
+        };*/
+
+        private readonly IDataOperations _dataOperations;
+
+        public WeatherForecastController(IDataOperations dataOperations)
+        {
+            _dataOperations = dataOperations;
+        }
+
+        [HttpGet("GetWeatherForecastOrdered")]
+        public IActionResult GetOrdered()
+        {
+            List<WeatherForecast> ret;
+            try
+            {
+                //In a complete solution, <weather forecast> type should be converted to DTO via mapper.
+                ret = _dataOperations.GetOrdered();
+                if (ret.Count == 0)
+                {
+                    return NoContent();
+                }
             }
             catch
             {
                 return BadRequest("An error occured");
+            }
+
+            return Ok(ret);
+        }
+
+        [HttpGet(Name = "GetWeatherForecast")]
+        public IActionResult GetAll()
+        {
+            List<WeatherForecast> ret;
+            try
+            {
+                ret = _dataOperations.GetAll();
+                if (ret.Count == 0)
+                {
+                    return NoContent();
+                }
+            }
+            catch
+            {
+                return BadRequest("An error occured");
+            }
+            return Ok(ret);
+        }
+
+        [HttpPost(Name = "PostWeatherForecast")]
+        public IActionResult Post([FromQuery] WeatherForecast wf)
+        {
+            List<WeatherForecast> ret = _dataOperations.Post(wf);
+
+            if (ret == null)
+            {
+                return BadRequest("An error occured");
+            }
+            else
+            {
+                return Ok(ret);
+            }
+        }
+
+        [HttpPut(Name = "PutWeatherForecast")]
+        public IActionResult Put(int id, WeatherForecast wf)
+        {
+            List<WeatherForecast> ret = _dataOperations.Put(id, wf);
+            if (ret == null)
+            {
+                return BadRequest("An error occured");
+            }
+            else
+            {
+                return Ok(ret);
+            }
+        }
+
+        [HttpPatch(Name = "PatchWeatherForecast")]
+        public IActionResult Patch(int id, WeatherForecast wf)
+        {
+            List<WeatherForecast> ret = _dataOperations.Patch(id, wf);
+            if (ret == null)
+            {
+                return BadRequest("An error occured");
+            }
+            else
+            {
+                return Ok(ret);
             }
         }
 
         [HttpDelete(Name = "PutWeatherForecast")]
         public IActionResult Delete(int id)
         {
-            try
-            {
-                staticData.forecastList.RemoveAt(id);
-                return Ok(staticData.forecastList);
-            }
-            catch
+            List<WeatherForecast> ret = _dataOperations.Delete(id);
+            if (ret == null)
             {
                 return BadRequest("An error occured");
+            }
+            else
+            {
+                return Ok(ret);
             }
         }
     }
