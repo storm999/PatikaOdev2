@@ -62,7 +62,7 @@ namespace PatikaOdev1.Controllers
             }
             catch
             {
-                return null; //Normall DTO object contains a field related with error handling.
+                return null; //Normally DTO object contains a field related with error handling.
             }
         }
 
@@ -75,7 +75,7 @@ namespace PatikaOdev1.Controllers
             }
             catch
             {
-                return null; //Normall DTO object contains a field related with error handling.
+                return null; //Normally DTO object contains a field related with error handling.
             }
         }
 
